@@ -8,11 +8,17 @@ Building is also slow and will use up all the CPU and network bandwidth on every
 
 ## Build details
 
-Run build.ps1 from the root of checked out repository and the build will take care of the process. The steps include:
+Run build.ps1 from the root of checked out repository and the build will take care of the process.
+
+If you are on PowerShell 2.0, use PowerShell.exe's -File parameter to invoke a script from another environment, like cmd.exe. For example:
+Powershell.exe -ExecutionPolicy Bypass -File build.ps1
+
+The steps include:
 
 1. Download and setup of Google Depot Tools in the case they are not available in the system; you would probably want to have them installed upfront
-2. Check out of webrtc repo at head of branch defined at the top of build.ps1 file (e.g. "m79")
+2. Check out of webrtc repo at head of branch defined at the top of build.ps1 file (e.g. "m79" see https://chromiumdash.appspot.com/branches)
 3. Toolchain update for build steps below
 4. Patching of webrtc and its Windows build configuration for .NET friendly build (dynamic CRT, use of standard `std`, C++/CLI friendliness)
 5. Ninja build of 32/64 Debug/Release configurations of webrtc
-6. Extraction of .H and .LIB files for use with in external projects (namely [Spitfire](https://github.com/RainwayApp/spitfire))
+6. Extraction of .H and .LIB files for use with in external projects
+

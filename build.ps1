@@ -1,9 +1,43 @@
-$webrtc_head = "3987"                            # WebRTC branch
-$checkout_path = "$(Get-Location)\webrtc"       # Checkout path
-$windows_builds = "$PSScriptRoot\win_builds"    # Build path
+Param (
+    [string] $build_path = "$PSScriptRoot\win_builds", # Build Path
+    [string] $webrtc_head = "3987",                    # WebRTC branch, see https://chromiumdash.appspot.com/branches
+    [ValidateSet('x86','x64','both')] 
+    [string] $target_cpu = "x86",                      # The target cpu for compilation. Default is 'x86'. Values can be 'x86','x64','both'
+    [ValidateSet('Debug','Release','All')] 
+    [string] $config = "Release",                      # Build configuration. Default is 'Release'. Values can be 'Debug', 'Release', 'All'.
+    [switch] $express = $false                         # Express build mode. Skip repo sync and dependency checks, just compile.
+)
 
-$do_checkout = $true # Checks Depot Tools, checks out webrtc repository; skip if you have this part ready and you are debugging
-$do_patch = $true # Patch webrtc checkout, or otheriwse it is assumed that you have a changes in progress that you are debugging
+$do_x86 = $false
+$do_x64 = $false
+if ($target_cpu -eq 'x86') {
+    $do_x86 = $true
+} elseif ($target_cpu -eq 'x64') {
+    $do_x64 = $true
+} else {
+    $do_x86 = $true
+    $do_x64 = $true
+}
+
+$do_debug = $false
+$do_release = $false
+if ($config -eq 'Debug') {
+    $do_debug = $true
+} elseif ($config -eq 'Release') {
+    $do_release = $true
+} else {
+    $do_debug = $true
+    $do_release = $true
+}
+
+Write-Output "Build Path: $build_path"
+Write-Output "WebRTC branch: $webrtc_head"
+Write-Output "Target CPU(s): $(if ($do_x86) { 'x86' }) $(if ($do_x64) { 'x64' })"
+Write-Output "Config(s): $(if ($do_debug) { 'Debug' }) $(if ($do_release) { 'Release' })"
+Write-Output "Express build mode: $express"
+
+$do_checkout = !$express # Checks Depot Tools, checks out webrtc repository; skip if you have this part ready and you are debugging
+$do_patch = !$express # Patch webrtc checkout, or otheriwse it is assumed that you have a changes in progress that you are debugging
 
 if(($do_checkout -eq $true) -and ($do_patch -eq $false)) {
     throw "You cannot skip patching if you are checking out, it is expected that patches are a part of the build in any case.";
@@ -44,7 +78,7 @@ function Build-WebRTC {
 
     $is_debug = If ($IsDebug) { "true" } Else { "false" }
     $build_name = If ($IsDebug) { "Debug" } Else { "Release" }
-    $output = "$windows_builds\$Target\$build_name"
+    $output = "$build_path\$Target\$build_name"
     $symbol_level = If ($IsDebug) { 2 } Else { 0 }
     $arguments = "use_rtti=true is_debug=$is_debug target_cpu=""""$Target"""" symbol_level=$symbol_level rtc_enable_sctp=true rtc_include_tests=false"
     $gn = Start-Process "gn" -ArgumentList "gen $output --args=""$arguments""" -PassThru -Wait -NoNewWindow
@@ -66,7 +100,7 @@ function Copy-Libs {
         [bool] $IsDebug
     )
     $build_name = If ($IsDebug) { "Debug" } Else { "Release" }
-    $library_location = "$windows_builds\$Target\$build_name"
+    $library_location = "$build_path\$Target\$build_name"
     $output = "$PSScriptRoot\libs\$Target\$build_name"
     if (Test-Path $output) {
         Remove-Item -Path $output -Force -Recurse
@@ -106,27 +140,29 @@ if($do_checkout) {
         $Env:Path += ";$(Get-Location)\depot_tools" # With pre-existing Depot Tools it is assumed path is OK; also it is recommended to have this path at the head of the list
     }
 
-    if (Test-Path $checkout_path) {
-        Write-Output "Cleaning up last checkout..."
-        Remove-Item -LiteralPath $checkout_path -Force -Recurse
-        Write-Output "Done."
-    }
+    if (!$express) {
+        if (Test-Path $checkout_path) {
+            Write-Output "Cleaning up last checkout..."
+            Remove-Item -LiteralPath $checkout_path -Force -Recurse
+            Write-Output "Done."
+        }
 
-    New-Item -ItemType Directory -Path $checkout_path
-    Set-Location -Path $checkout_path
-    Write-Output "Fetching WebRTC"
+        New-Item -ItemType Directory -Path $checkout_path
+        Set-Location -Path $checkout_path
+        Write-Output "Fetching WebRTC"
 
-    $fetch_process = Start-Process "fetch" -ArgumentList "--nohooks webrtc" -PassThru -Wait -NoNewWindow
-    if ($fetch_process.ExitCode -ne 0) {
-        throw "Failed to fetch WebRTC."
-    }
+        $fetch_process = Start-Process "fetch" -ArgumentList "--nohooks webrtc" -PassThru -Wait -NoNewWindow
+        if ($fetch_process.ExitCode -ne 0) {
+            throw "Failed to fetch WebRTC."
+        }
 
-    Set-Location -Path "$checkout_path\src"
-    Write-Output "Checking out remote header $webrtc_head..."
+        Set-Location -Path "$checkout_path\src"
+        Write-Output "Checking out remote header $webrtc_head..."
 
-    $checkout = Start-Process "git" -ArgumentList "checkout -b spitfire refs/remotes/branch-heads/$webrtc_head" -PassThru -Wait -NoNewWindow
-    if ($checkout.ExitCode -ne 0) {
-        throw "Failed to checkout remote WebRTC branch"
+        $checkout = Start-Process "git" -ArgumentList "checkout -b $webrtc_head refs/remotes/branch-heads/$webrtc_head" -PassThru -Wait -NoNewWindow
+        if ($checkout.ExitCode -ne 0) {
+            throw "Failed to checkout remote WebRTC branch"
+        }
     }
 }
 
@@ -144,10 +180,10 @@ if($do_patch) {
     if ($gclient.ExitCode -ne 0) {
         throw "Failed to sync WebRTC code. $($gclient.ExitCode)"
     }
-    Write-Output "Applying webrtc patches..."
-    Set-Location -Path "$checkout_path\src"
-    Apply-Patch -Name "$PSScriptRoot\patches\webrtc-src\optimize.patch"
-	Apply-Patch -Name "$PSScriptRoot\patches\webrtc-src\usrsctp.patch"
+    #Write-Output "Applying webrtc patches..."
+    #Set-Location -Path "$checkout_path\src"
+    #Apply-Patch -Name "$PSScriptRoot\patches\webrtc-src\optimize.patch"
+    #Apply-Patch -Name "$PSScriptRoot\patches\webrtc-src\usrsctp.patch"
     Write-Output "Applying webrtc-src-build patches..."
     Set-Location -Path "$checkout_path\src\build"
     Apply-Patch -Name "$PSScriptRoot\patches\webrtc-src-build\0001-Spitfire-C-CLI-build-customization.patch"
@@ -162,27 +198,41 @@ if($do_patch) {
 
 Set-Location -Path "$checkout_path\src"
 
-if (Test-Path $windows_builds) {
+if (Test-Path $build_path) {
     Write-Output "Cleaning up old builds..."
-    Remove-Item -LiteralPath $windows_builds -Force -Recurse
+    Remove-Item -LiteralPath $build_path -Force -Recurse
     Write-Output "Done."
 }
 
-Write-Output "Building x64 Debug"
-Build-WebRTC -Target "x64" -IsDebug $true
-Write-Output "Building x64 Release"
-Build-WebRTC -Target "x64" -IsDebug $false
-Write-Output "Building x86 Debug"
-Build-WebRTC -Target "x86" -IsDebug $true
-Write-Output "Building x86 Release"
-Build-WebRTC -Target "x86" -IsDebug $false
+if ($do_x64) {
+    if ($do_debug) {
+        Write-Output "Building x64 Debug"
+        Build-WebRTC -Target "x64" -IsDebug $true
+        Write-Output "Copying x64 Debug Libraries"
+        Copy-Libs -Target "x64" -IsDebug $true
+    }
+    if ($do_release) {
+        Write-Output "Building x64 Release"
+        Build-WebRTC -Target "x64" -IsDebug $false
+        Write-Output "Copying x64 Releas Libraries"
+        Copy-Libs -Target "x64" -IsDebug $false
+    }
+}
 
-Write-Output "Copying x64 Libraries"
-Copy-Libs -Target "x64" -IsDebug $true
-Copy-Libs -Target "x64" -IsDebug $false
-Write-Output "Copying x86 Libraries"
-Copy-Libs -Target "x86" -IsDebug $true
-Copy-Libs -Target "x86" -IsDebug $false
+if ($do_x86) {
+    if ($do_debug) {
+        Write-Output "Building x86 Debug"
+        Build-WebRTC -Target "x86" -IsDebug $true
+        Write-Output "Copying x86 Debug Libraries"
+        Copy-Libs -Target "x86" -IsDebug $true
+    }
+    if ($do_release) {
+        Write-Output "Building x86 Release"
+        Build-WebRTC -Target "x86" -IsDebug $false
+        Write-Output "Copying x86 Release Libraries"
+        Copy-Libs -Target "x86" -IsDebug $false
+    }
+}
 
 Copy-Includes
 
