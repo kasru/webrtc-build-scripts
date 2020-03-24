@@ -8,6 +8,8 @@ Param (
     [switch] $express = $false                         # Express build mode. Skip repo sync and dependency checks, just compile.
 )
 
+$checkout_path = "$(Get-Location)\webrtc"       # Checkout path
+
 $do_x86 = $false
 $do_x64 = $false
 if ($target_cpu -eq 'x86') {
@@ -30,6 +32,7 @@ if ($config -eq 'Debug') {
     $do_release = $true
 }
 
+Write-Output "Checkout path: $checkout_path"
 Write-Output "Build Path: $build_path"
 Write-Output "WebRTC branch: $webrtc_head"
 Write-Output "Target CPU(s): $(if ($do_x86) { 'x86' }) $(if ($do_x64) { 'x64' })"
