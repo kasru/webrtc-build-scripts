@@ -104,7 +104,7 @@ function Copy-Libs {
     )
     $build_name = If ($IsDebug) { "Debug" } Else { "Release" }
     $library_location = "$build_path\$Target\$build_name"
-    $output = "$PSScriptRoot\libs\$Target\$build_name"
+    $output = "$PSScriptRoot\lib\$Target\$build_name"
     if (Test-Path $output) {
         Remove-Item -Path $output -Force -Recurse
     }
@@ -112,7 +112,7 @@ function Copy-Libs {
 }
 
 function Copy-Includes {
-    $includes_path = "$PSScriptRoot\includes"
+    $includes_path = "$PSScriptRoot\include"
     if (Test-Path $includes_path) {
         Write-Output "Cleaning up old includes..."
         # if exists: empty contents and reuse the directory itself
